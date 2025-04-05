@@ -3,6 +3,7 @@ CSC3916 HW4
 File: Server.js
 Description: Web API scaffolding for Movie API
  */
+var mongoose = require('mongoose');
 
 var express = require('express');
 var bodyParser = require('body-parser');
@@ -86,6 +87,108 @@ router.post('/signin', function (req, res) {
         })
     })
 });
+
+// GET all reviews
+router.get('/reviews', function (req, res) {
+    Review.find({})
+        .populate('movieId', 'title') // Optional: populate movie title
+        .exec(function (err, reviews) {
+            if (err) res.status(500).send(err);
+            else res.json(reviews);
+        });
+});
+
+// POST a new review (JWT protected)
+router.post('/reviews', authJwtController.isAuthenticated, function (req, res) {
+    const { movieId, username, review, rating } = req.body;
+
+    if (!movieId || !username || !review || rating == null) {
+        return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    const newReview = new Review({
+        movieId,
+        username,
+        review,
+        rating
+    });
+
+    newReview.save(function (err) {
+        if (err) {
+            res.status(500).json({ message: 'Failed to create review', error: err });
+        } else {
+            res.status(201).json({ message: 'Review created!' });
+        }
+    });
+});
+
+// GET all movies (with optional ?reviews=true for aggregation)
+router.get('/movies', function (req, res) {
+    const includeReviews = req.query.reviews === 'true';
+
+    if (includeReviews) {
+        // Aggregate movies with their reviews
+        Movie.aggregate([
+            {
+                $lookup: {
+                    from: "reviews",              // Collection to join (MongoDB lowercases it)
+                    localField: "_id",            // Movie _id
+                    foreignField: "movieId",      // Matching field in Review
+                    as: "reviews"                 // Result array field
+                }
+            }
+        ]).exec(function (err, result) {
+            if (err) {
+                res.status(500).json({ message: 'Error aggregating reviews', error: err });
+            } else {
+                res.json(result);
+            }
+        });
+    } else {
+        // Return just movies without reviews
+        Movie.find({}, function (err, movies) {
+            if (err) res.status(500).send(err);
+            else res.json(movies);
+        });
+    }
+});
+
+// GET one movie with optional review aggregation
+router.get('/movies/:id', function (req, res) {
+    const includeReviews = req.query.reviews === 'true';
+    const movieId = req.params.id;
+
+    if (includeReviews) {
+        Movie.aggregate([
+            {
+                $match: { _id: new mongoose.Types.ObjectId(movieId) }
+            },
+            {
+                $lookup: {
+                    from: "reviews",
+                    localField: "_id",
+                    foreignField: "movieId",
+                    as: "reviews"
+                }
+            }
+        ]).exec(function (err, result) {
+            if (err) {
+                res.status(500).json({ message: 'Error aggregating', error: err });
+            } else if (result.length === 0) {
+                res.status(404).json({ message: 'Movie not found.' });
+            } else {
+                res.json(result[0]);
+            }
+        });
+    } else {
+        Movie.findById(movieId, function (err, movie) {
+            if (err) res.status(500).send(err);
+            else if (!movie) res.status(404).json({ message: 'Movie not found.' });
+            else res.json(movie);
+        });
+    }
+});
+
 
 app.use('/', router);
 app.listen(process.env.PORT || 8080);
