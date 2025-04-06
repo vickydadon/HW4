@@ -189,6 +189,30 @@ router.get('/movies/:id', function (req, res) {
     }
 });
 
+// POST a new movie (JWT protected)
+router.post('/movies', authJwtController.isAuthenticated, function (req, res) {
+    const { title, releaseDate, genre, actors } = req.body;
+
+    if (!title || !genre || !actors || !Array.isArray(actors) || actors.length === 0) {
+        return res.status(400).json({ message: 'Title, genre, and at least one actor are required.' });
+    }
+
+    for (let actor of actors) {
+        if (!actor.actorName || !actor.characterName) {
+            return res.status(400).json({ message: 'Each actor must have both actorName and characterName.' });
+        }
+    }
+
+    const newMovie = new Movie({ title, releaseDate, genre, actors });
+
+    newMovie.save(function (err, movie) {
+        if (err) {
+            res.status(500).json({ message: 'Failed to create movie', error: err });
+        } else {
+            res.status(201).json({ message: 'Movie added successfully', movie });
+        }
+    });
+});
 
 app.use('/', router);
 app.listen(process.env.PORT || 8080);
