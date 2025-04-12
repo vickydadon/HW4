@@ -1,47 +1,44 @@
-var mongoose = require('mongoose');
-var Schema = mongoose.Schema;
-var bcrypt = require('bcrypt-nodejs');
+const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 
+const Schema = mongoose.Schema;
 mongoose.Promise = global.Promise;
 
-//mongoose.connect(process.env.DB, { useNewUrlParser: true });
+// Connect to MongoDB
 try {
-    mongoose.connect( process.env.DB, {useNewUrlParser: true, useUnifiedTopology: true}, () =>
-        console.log("connected"));
-}catch (error) {
+    mongoose.connect(process.env.DB, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true
+    }, () => console.log("connected"));
+} catch (error) {
     console.log("could not connect");
 }
 mongoose.set('useCreateIndex', true);
 
-//user schema
-var UserSchema = new Schema({
+// User schema
+const UserSchema = new Schema({
     name: String,
-    username: { type: String, required: true, index: { unique: true }},
+    username: { type: String, required: true, unique: true, index: true },
     password: { type: String, required: true, select: false }
 });
 
-UserSchema.pre('save', function(next) {
-    var user = this;
+// Hash password before saving
+UserSchema.pre('save', async function(next) {
+    if (!this.isModified('password')) return next();
 
-    //hash the password
-    if (!user.isModified('password')) return next();
-
-    bcrypt.hash(user.password, null, null, function(err, hash) {
-        if (err) return next(err);
-
-        //change the password
-        user.password = hash;
+    try {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
         next();
-    });
+    } catch (err) {
+        next(err);
+    }
 });
 
-UserSchema.methods.comparePassword = function (password, callback) {
-    var user = this;
+// Compare password
+UserSchema.methods.comparePassword = function(candidatePassword) {
+    return bcrypt.compare(candidatePassword, this.password);
+};
 
-    bcrypt.compare(password, user.password, function(err, isMatch) {
-        callback(isMatch);
-    })
-}
-
-//return the model to server
+// Export the model
 module.exports = mongoose.model('User', UserSchema);
