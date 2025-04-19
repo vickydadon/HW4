@@ -9,6 +9,10 @@ var ReviewSchema = new Schema({
   username: String,
   review: String,
   rating: { type: Number, min: 0, max: 5 }
+
+
+
+
 });
 
 // return the model
